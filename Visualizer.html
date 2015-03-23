@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  <script src="http://d3js.org/d3.v2.js?2.9.1"></script>
+  <script type="text/javascript" src="http://www.parsecdn.com/js/parse-1.3.5.min.js"></script>
+</head>
+<style>
+
+.link {
+  fill: none;
+  stroke: #666;
+  stroke-width: 1.5px;
+}
+
+.node circle {
+  fill: #ccc;
+  stroke: #fff;
+  stroke-width: 1.5px;
+}
+
+text {
+  font: 10px sans-serif;
+  pointer-events: none;
+}
+
+</style>
+<body>
+<script>
+Parse.initialize("0QVTaoX6CUshj3TRhQhQjLz0EgBOLfq01hrqpv9y", "DUanqSHqzGNHzvnfprX3S95PcHPVoceugLNIPq6L");
+
+var BeaconEntries = Parse.Object.extend("BeaconEntry");
+var query = new Parse.Query(BeaconEntries);
+var rowCount;
+
+
+function asyncLoop(iterations, pageSize, func, callback) {
+  var index = 0;
+  var done = false;
+  var loop = {
+    next: function() {
+        if (done) {
+            return;
+        }
+        if (index < iterations) {
+            index+=pageSize;
+            func(loop);
+
+        } else {
+            done = true;
+            callback();
+        }
+    },
+
+    iteration: function() {
+        return index;
+    },
+
+    break: function() {
+        done = true;
+        callback();
+    }
+  };
+  loop.next();
+  return loop;
+}
+
+
+
+query.count({
+  success:function(count){
+    var entries = []
+    var pageSize = 10;
+    //query.equalTo("Distance", -1);
+    console.log(count);
+    query.limit(pageSize);
+    asyncLoop(count, pageSize, function(loop) {
+      queryBeacon(entries, loop.iteration(), function(result) {
+        loop.next();
+      })},
+      function(){createGraph(entries)}
+    );
+  }
+});
+
+function queryBeacon(entries,a,callback) {
+  query.skip(a);
+  console.log(a);
+  query.find({
+    success:function(results) {
+      for (var x = 0; x < results.length; x++) { 
+        var object = results[x];
+          if(object.get("Distance") == -1) {
+          var r = {};
+          r['source'] = object.get("beaconUUID");
+          r['target'] = object.get('iPhoneUUID')
+          entries.push(r);
+          console.log("added");
+        }
+      }
+      callback();
+    },
+    error:function(error) {
+      console.log("Error getting rows");
+      callback();
+    }
+  });
+}
+
+
+function createGraph(entries){
+
+  console.log("Entries");
+  console.log(entries);
+  // http://blog.thomsonreuters.com/index.php/mobile-patent-suits-graphic-of-the-day/
+  var links = entries;
+
+  var nodes = {};
+
+  // Compute the distinct nodes from the links.
+  links.forEach(function(link) {
+    link.source = nodes[link.source] || (nodes[link.source] = {name: link.source});
+    link.target = nodes[link.target] || (nodes[link.target] = {name: link.target});
+  });
+
+  var width = 960,
+      height = 500;
+
+  var force = d3.layout.force()
+      .nodes(d3.values(nodes))
+      .links(links)
+      .size([width, height])
+      .linkDistance(60)
+      .charge(-300)
+      .on("tick", tick)
+      .start();
+
+  var svg = d3.select("body").append("svg")
+      .attr("width", width)
+      .attr("height", height);
+
+  var link = svg.selectAll(".link")
+      .data(force.links())
+    .enter().append("line")
+      .attr("class", "link");
+
+  var node = svg.selectAll(".node")
+      .data(force.nodes())
+    .enter().append("g")
+      .attr("class", "node")
+      .on("mouseover", mouseover)
+      .on("mouseout", mouseout);
+
+  node.append("circle")
+      .attr("r", 8);
+
+  node.append("text")
+      .attr("x", 12)
+      .attr("dy", ".35em")
+      .text(function(d) { return d.name; }); 
+
+  function tick() {
+    link
+        .attr("x1", function(d) { return d.source.x; })
+        .attr("y1", function(d) { return d.source.y; })
+        .attr("x2", function(d) { return d.target.x; })
+        .attr("y2", function(d) { return d.target.y; });
+
+    node
+        .attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+  }
+  function mouseover() {
+    d3.select(this).select("circle").transition()
+        .duration(750)
+        .attr("r", 16);
+  }
+
+  function mouseout() {
+    d3.select(this).select("circle").transition()
+        .duration(750)
+        .attr("r", 8);
+  }
+}
+
+</script>
